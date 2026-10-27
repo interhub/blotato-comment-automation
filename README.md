@@ -1,5 +1,7 @@
 # Comment-triggered DM automations
 
+Live playground: https://blotato.5.180.173.9.sslip.io
+
 A backend prototype for automations like "when someone comments *pricing*, reply to the comment, DM them for their email, wait for a valid answer, then DM a link". Fastify API, a graphile-worker worker and Postgres as the only moving parts.
 
 The reasoning (architecture, data model, execution model, reliability, rejected alternatives) is in [DESIGN.md](DESIGN.md). This README covers running the code.
@@ -15,6 +17,49 @@ npm test                      # creates and migrates the test database itself
 ```
 
 `npm run typecheck` runs `tsc --noEmit`.
+
+## Playground
+
+With `DEMO_MODE=true` the API also serves a single-page playground at `/`. Each browser gets its own sandbox (a random id in `localStorage`): a demo Instagram account with a seeded "pricing" automation whose wait timeout is 120 seconds, so a timeout can be watched. You comment on a mock post, answer the DMs as the commenter, edit the automation, and see every run, outbound call, retry and wait deadline as stored in Postgres.
+
+```bash
+DEMO_MODE=true npm run dev     # then open http://localhost:3000
+```
+
+The playground uses the same paths as production traffic:
+
+| Route | What it does |
+|---|---|
+| `POST /demo/:sandbox/comment` | builds a normalized comment event, signs it and sends it to `POST /webhooks/instagram` (`fastify.inject`); `copies: 1..3` sends the same event id several times in parallel |
+| `POST /demo/:sandbox/message` | the same for a DM, optionally with attachments (a sticker) |
+| `POST /demo/:sandbox/faults` | scripts the next sends of this sandbox's account to fail (`transient: 0..3`, `permanent`) |
+| `PUT /demo/:sandbox/automation` | turns the small form into a definition and stores it through `PUT /automations/:id` as a new version |
+| `GET /demo/:sandbox/state` | per person: comments and DMs from `inbound_events`, outbound actions with attempts and private reply vs DM mode, runs with step, wait deadline and queue position |
+
+Demo routes are rate limited per IP (60 writes and 300 state polls a minute), take bodies up to 4 KB and texts up to 300 characters. A `demo_cleanup` cron task deletes sandboxes older than 24 hours every 15 minutes. Fault injection reaches the worker only when both run in one process (`main.ts all`), because `MockPlatform` lives in memory.
+
+## Deploy
+
+One container runs migrations, then the API and the worker in one process (`main.ts all`) against the Postgres in `DATABASE_URL` (developed on Postgres 16):
+
+```bash
+docker build -t comment-automation .
+docker run -p 3000:3000 \
+  -e DATABASE_URL=postgres://user:pass@host:5432/comment_automation \
+  -e WEBHOOK_SECRET=change-me \
+  -e DEMO_MODE=true \
+  comment-automation
+```
+
+| Variable | Image default | Purpose |
+|---|---|---|
+| `DATABASE_URL` | none, required | Postgres connection string |
+| `WEBHOOK_SECRET` | none, required (`NODE_ENV=production`) | HMAC secret; the playground signs its events with it server-side |
+| `DEMO_MODE` | `false` | `true` serves the playground at `/` and the `/demo` routes |
+| `PORT` | `3000` | listen port (host is `0.0.0.0`) |
+| `TRUST_PROXY` | `0` | reverse proxy hops in front of the app (`1` behind Traefik or nginx), so rate limits see the client address |
+
+The image compiles TypeScript to `dist/` and ships only production dependencies; `HEALTHCHECK` calls `/health`, which also checks the database.
 
 ## Running the API and the worker
 
@@ -82,6 +127,8 @@ curl -s localhost:3000/runs/<runId>                 # run state, inputs, every o
 | `WEBHOOK_SECRET` | `dev-webhook-secret`; required when `NODE_ENV=production` | HMAC secret for webhook signatures |
 | `WORKER_CONCURRENCY` | `5` | jobs executed in parallel |
 | `RETRY_BASE_MS`, `RETRY_CAP_MS`, `RETRY_MAX_ATTEMPTS` | `1000`, `60000`, `5` | backoff for transient platform errors |
+| `DEMO_MODE` | `false` | serve the playground and `/demo` routes |
+| `TRUST_PROXY` | `0` | reverse proxy hops to trust for the client address |
 | `ADVANCE_RUN_MAX_ATTEMPTS` | `5` | attempts of an `advance_run` job that crashes with a non-platform error (a bug, a database error) before its run is closed as `failed` and the person's next queued run starts |
 
 The wait timeout is per step (`timeoutSeconds`, fractions allowed), default 24 hours to match Instagram's messaging window.
@@ -100,18 +147,22 @@ Integration tests drive the real webhook endpoint (`fastify.inject`) and the rea
 | `replies.test.ts` | question, emoji, attachment, typo, refusal, reprompt budget, copy rotation and overrides, two questions in a row where an extra message sent with the first answer does not leak into the second |
 | `idempotency.test.ts` | steps already recorded as `sent` are not sent again; a lost `sent` write leads to a second call that only a provider honouring the idempotency key (the mock, not Instagram) drops |
 | `maintenance.test.ts` | `gc_job_queues` drops the queues of finished runs and keeps live ones |
-| `api.test.ts` | signatures (including a forged one of the right length), validation, versioning, 404s |
+| `api.test.ts` | signatures (including a forged one of the right length), validation, versioning, 404s, playground off by default |
+| `demo.test.ts` | playground: full flow in one sandbox and none of it in another, webhook delivered 3x starts one run, faults scripted per account, editing through a new version, cleanup of sandboxes older than 24 hours |
 | `unit/*` | keyword matching, reply classifier (whole-message refusals), template `url` filter, backoff, HMAC, `WEBHOOK_SECRET` in production |
 
 ## Layout
 
 ```
 migrations/001_init.sql     schema from DESIGN.md section 5
+public/                     playground page (HTML, CSS, vanilla JS), served only with DEMO_MODE=true
+Dockerfile                  multi-stage build: tsc to dist/, production deps, migrate then main.js all
 scripts/send-webhook.ts     sign and send a mock webhook to a running API
 src/
   main.ts                   entrypoint: api | worker | all
   config.ts  db.ts  jobs.ts  logger.ts  migrate.ts
   api/                      Fastify app: webhooks, automations, runs, health
+  demo/                     playground routes, sandbox state query, 24-hour cleanup cron
   domain/                   definition schema, keyword match, reply classifier, copy, webhook payload + HMAC
   platform/                 SocialPlatform interface, PlatformError, MockPlatform
   worker/                   process_event, advance_run, wait_timeout, gc_job_queues, steps, run inputs, idempotent outbound sends

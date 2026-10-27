@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Comment to DM playground</title>
+  <meta name="description" content="Comment a keyword, get a reply and a DM, answer with an email, get a link. A playground for a Fastify, Postgres and graphile-worker backend.">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="top">
+    <div class="top-title">
+      <h1>Comment to DM automation</h1>
+      <p>Comment a keyword, get a public reply and a DM asking for an email, answer it, get a link. Every action here is signed and sent to the real webhook endpoint, runs through the Postgres job queue against a mock Instagram adapter, and is read back from the database.</p>
+    </div>
+    <nav class="top-links" aria-label="Project links">
+      <a href="https://github.com/interhub/blotato-comment-automation">GitHub</a>
+      <a href="https://github.com/interhub/blotato-comment-automation/blob/master/DESIGN.md">DESIGN.md</a>
+    </nav>
+  </header>
+
+  <main class="bench">
+    <section class="col col-post" aria-labelledby="post-heading">
+      <h2 id="post-heading" class="col-label">Instagram post</h2>
+
+      <div class="post">
+        <div class="post-head">
+          <span class="avatar avatar-brand" aria-hidden="true">O</span>
+          <div>
+            <strong>ottoline.studio</strong>
+            <span class="muted">Sponsored</span>
+          </div>
+          <div class="post-tabs" role="tablist" aria-label="Choose post">
+            <button role="tab" type="button" data-post="post-1" aria-selected="true">Post 1</button>
+            <button role="tab" type="button" data-post="post-2" aria-selected="false">Post 2</button>
+          </div>
+        </div>
+        <div class="post-art" data-post-art="post-1" aria-hidden="true">
+          <span class="art-a"></span><span class="art-b"></span><span class="art-c"></span>
+        </div>
+        <p class="post-caption"><strong>ottoline.studio</strong> <span id="post-caption-text">Spring course is open. Comment <b>pricing</b> and we'll DM you the details.</span></p>
+
+        <ol class="comments" id="comments" aria-live="polite"></ol>
+
+        <form class="composer" id="comment-form">
+          <div class="field field-user">
+            <label for="username">Comment as</label>
+            <div class="user-row">
+              <span class="at" aria-hidden="true">@</span>
+              <input id="username" name="username" autocomplete="off" spellcheck="false" maxlength="30" required>
+              <button type="button" class="btn btn-quiet" id="switch-user">Switch</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="comment-text">Comment</label>
+            <div class="send-row">
+              <input id="comment-text" name="text" value="pricing?" maxlength="300" required>
+              <button class="btn btn-primary" type="submit">Post</button>
+            </div>
+          </div>
+          <p class="form-error" id="comment-error" role="alert"></p>
+        </form>
+      </div>
+
+      <details class="editor" id="editor">
+        <summary>
+          <span>Automation</span>
+          <span class="mono muted" id="editor-version">loading</span>
+        </summary>
+        <form id="automation-form" class="editor-form">
+          <p class="hint">Saving stores a new version through <code>PUT /automations/:id</code>. Runs already in flight keep the version they started with.</p>
+          <div class="field">
+            <label for="f-keywords">Keywords</label>
+            <input id="f-keywords" name="keywords" maxlength="200" required>
+            <small>Comma separated, whole word, case-insensitive.</small>
+          </div>
+          <div class="field">
+            <label for="f-reply">Public reply to the comment</label>
+            <input id="f-reply" name="replyText" maxlength="300" required>
+          </div>
+          <div class="field">
+            <label for="f-prompt">DM asking for the email</label>
+            <textarea id="f-prompt" name="prompt" rows="2" maxlength="300" required></textarea>
+          </div>
+          <div class="field">
+            <label for="f-final">DM with the link</label>
+            <textarea id="f-final" name="finalText" rows="2" maxlength="300" required></textarea>
+            <small><code>{{email|url}}</code> inserts the collected email URL-encoded.</small>
+          </div>
+          <div class="field field-narrow">
+            <label for="f-timeout">Wait for the answer (seconds)</label>
+            <input id="f-timeout" name="timeoutSeconds" type="number" min="15" max="900" step="1" required>
+          </div>
+          <div class="editor-actions">
+            <button class="btn btn-primary" type="submit">Save new version</button>
+            <span class="form-status" id="automation-status" role="status"></span>
+          </div>
+        </form>
+      </details>
+    </section>
+
+    <section class="col col-dm" aria-labelledby="dm-heading">
+      <h2 id="dm-heading" class="col-label">Direct messages</h2>
+      <div class="thread">
+        <div class="thread-head">
+          <span class="avatar avatar-brand" aria-hidden="true">O</span>
+          <div>
+            <strong>ottoline.studio</strong>
+            <span class="muted" id="thread-with">talking to @</span>
+          </div>
+        </div>
+        <ol class="messages" id="messages" aria-live="polite"></ol>
+        <div class="quick" aria-label="Quick replies">
+          <span class="muted">Try</span>
+          <button type="button" class="chip" data-reply="how much is it?">a question</button>
+          <button type="button" class="chip" data-reply="ana@gmail">a broken email</button>
+          <button type="button" class="chip" data-reply="no thanks">a refusal</button>
+          <button type="button" class="chip" data-reply="jo+promo@gmail.com">jo+promo@gmail.com</button>
+        </div>
+        <form class="composer composer-dm" id="dm-form">
+          <label for="dm-text" class="sr-only">Reply as the commenter</label>
+          <input id="dm-text" placeholder="Reply as the commenter" maxlength="300" autocomplete="off">
+          <button type="button" class="btn btn-quiet" id="send-sticker">Sticker</button>
+          <button class="btn btn-primary" type="submit">Send</button>
+        </form>
+        <p class="form-error" id="dm-error" role="alert"></p>
+      </div>
+    </section>
+
+    <section class="col col-hood" aria-labelledby="hood-heading">
+      <h2 id="hood-heading" class="col-label">Under the hood</h2>
+
+      <div class="chaos" aria-label="Failure scenarios">
+        <div class="chaos-row">
+          <button type="button" class="btn" id="x-dup">Deliver webhook 3x</button>
+          <p>Same event id, three parallel requests. A unique key stores it once; two get a duplicate ack.</p>
+        </div>
+        <div class="chaos-row">
+          <button type="button" class="btn" id="x-transient">Fail next send twice</button>
+          <p>Transient errors. The send retries with backoff under one idempotency key, so it lands once.</p>
+        </div>
+        <div class="chaos-row">
+          <button type="button" class="btn" id="x-permanent">Fail next send for good</button>
+          <p>A permanent error is not retried. The run fails and the person's next queued run starts.</p>
+        </div>
+        <div class="chaos-row">
+          <button type="button" class="btn" id="x-two-posts">Comment on both posts at once</button>
+          <p>One live conversation per person: the second run waits in a queue instead of interleaving DMs.</p>
+        </div>
+        <p class="armed" id="armed" role="status"></p>
+        <p class="form-error chaos-error" id="chaos-error" role="alert"></p>
+      </div>
+
+      <div class="hood-block">
+        <h3>Runs for <span id="hood-user" class="mono"></span></h3>
+        <ol class="runs" id="runs"></ol>
+      </div>
+
+      <div class="hood-block">
+        <h3>Outbound calls</h3>
+        <div class="table-wrap">
+          <table class="calls">
+            <thead><tr><th scope="col">Call</th><th scope="col">Mode</th><th scope="col">Status</th><th scope="col">Tries</th></tr></thead>
+            <tbody id="calls"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="hood-block">
+        <h3>Webhook deliveries from this tab</h3>
+        <ol class="deliveries mono" id="deliveries"></ol>
+      </div>
+
+      <div class="hood-block" id="people-block" hidden>
+        <h3>Other people in this sandbox</h3>
+        <div class="people" id="people"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>Your sandbox is private to this browser and deleted after 24 hours.</span>
+    <button type="button" class="link-btn" id="new-sandbox">Start a fresh sandbox</button>
+  </footer>
+</body>
+</html>

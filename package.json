@@ -14,9 +14,11 @@
     "start:worker": "tsx --env-file-if-exists=.env src/main.ts worker",
     "webhook": "tsx --env-file-if-exists=.env scripts/send-webhook.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit -p ."
+    "typecheck": "tsc --noEmit -p .",
+    "build": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
+    "@fastify/rate-limit": "^10.3.0",
     "fastify": "^5.12.7",
     "graphile-worker": "^0.18.0",
     "pg": "^8.23.1",

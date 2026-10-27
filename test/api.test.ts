@@ -70,4 +70,9 @@ describe("HTTP API", () => {
     expect((await h.app.inject({ method: "GET", url: "/runs/00000000-0000-0000-0000-000000000000" })).statusCode).toBe(404);
     expect((await h.app.inject({ method: "GET", url: "/health" })).json()).toEqual({ ok: true });
   });
+
+  it("does not mount the playground unless demo mode is on", async () => {
+    expect((await h.app.inject({ method: "GET", url: "/" })).statusCode).toBe(404);
+    expect((await h.app.inject({ method: "GET", url: "/demo/sandbox-aaaa-1111/state" })).statusCode).toBe(404);
+  });
 });

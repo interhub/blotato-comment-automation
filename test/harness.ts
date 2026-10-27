@@ -54,7 +54,7 @@ export interface RunRow {
  * Real Fastify app + real worker task list + MockPlatform against the test database.
  * Registers the vitest hooks, so call it once at the top of a test file.
  */
-export function useHarness(retry: Partial<RetryPolicy> = {}) {
+export function useHarness(retry: Partial<RetryPolicy> = {}, options: { demo?: boolean } = {}) {
   const pool = createPool(TEST_DATABASE_URL);
   const mock = new MockPlatform();
   const logger = pino({ level: "silent" });
@@ -69,7 +69,7 @@ export function useHarness(retry: Partial<RetryPolicy> = {}) {
   let app!: FastifyInstance;
 
   beforeAll(async () => {
-    app = await buildApp({ pool, webhookSecret: SECRET, logger });
+    app = await buildApp({ pool, webhookSecret: SECRET, logger, demo: options.demo ? { platform: mock } : undefined });
   });
   beforeEach(async () => {
     mock.reset();

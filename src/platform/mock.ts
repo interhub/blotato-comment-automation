@@ -10,6 +10,7 @@ export type MockCall =
 export type SentMessage = MockCall & { messageId: string };
 
 interface FailureScript {
+  accountId?: string;
   remaining: number;
   error: PlatformError;
   when: (call: MockCall) => boolean;
@@ -29,17 +30,34 @@ export class MockPlatform implements SocialPlatform {
   private readonly byKey = new Map<string, SendResult>();
   private scripts: FailureScript[] = [];
 
+  /** Scripts the next `times` matching calls to fail; `accountId` limits the script to one account. */
   fail(options: {
     kind: "transient" | "permanent";
     times?: number;
     retryAfterMs?: number;
+    accountId?: string;
     when?: (call: MockCall) => boolean;
   }): void {
+    const when = options.when ?? (() => true);
+    const { accountId } = options;
+    this.scripts = this.scripts.filter((s) => s.remaining > 0);
     this.scripts.push({
+      accountId,
       remaining: options.times ?? 1,
       error: new PlatformError(`mock ${options.kind} failure`, options.kind, options.retryAfterMs),
-      when: options.when ?? (() => true),
+      when: accountId === undefined ? when : (call) => call.accountId === accountId && when(call),
     });
+  }
+
+  /** Failures still scripted for one account, in the order they will fire. */
+  pendingFailures(accountId: string): ("transient" | "permanent")[] {
+    return this.scripts
+      .filter((s) => s.accountId === accountId && s.remaining > 0)
+      .flatMap((s) => Array.from({ length: s.remaining }, () => s.error.kind));
+  }
+
+  clearFailures(accountId: string): void {
+    this.scripts = this.scripts.filter((s) => s.accountId !== accountId);
   }
 
   reset(): void {

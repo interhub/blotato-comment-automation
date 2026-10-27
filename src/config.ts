@@ -14,6 +14,10 @@ export interface Config {
   advanceRunMaxAttempts: number;
   logLevel: string;
   retry: RetryPolicy;
+  /** Serves the playground and the /demo routes (sandboxed demo accounts). */
+  demoMode: boolean;
+  /** Reverse proxy hops in front of the API, so rate limits see the client's address. */
+  trustProxy: number;
 }
 
 function int(name: string, fallback: number): number {
@@ -48,5 +52,7 @@ export function loadConfig(): Config {
       capMs: int("RETRY_CAP_MS", 60_000),
       maxAttempts: int("RETRY_MAX_ATTEMPTS", 5),
     },
+    demoMode: process.env.DEMO_MODE === "true",
+    trustProxy: int("TRUST_PROXY", 0),
   };
 }
