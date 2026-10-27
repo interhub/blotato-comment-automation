@@ -1,0 +1,33 @@
+{
+  "name": "blotato-comment-automation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "db:up": "docker compose up -d --wait",
+    "migrate": "tsx --env-file-if-exists=.env src/migrate.ts",
+    "dev": "npm run migrate && tsx --env-file-if-exists=.env src/main.ts all",
+    "start:api": "tsx --env-file-if-exists=.env src/main.ts api",
+    "start:worker": "tsx --env-file-if-exists=.env src/main.ts worker",
+    "webhook": "tsx --env-file-if-exists=.env scripts/send-webhook.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "fastify": "^5.12.7",
+    "graphile-worker": "^0.18.0",
+    "pg": "^8.23.1",
+    "pino": "^10.4.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}
